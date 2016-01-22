@@ -1,0 +1,4 @@
+[package]
+name = "earley_parser"
+version = "0.1.0"
+authors = ["Jacek Przemieniecki <jacek@przemieniecki.net>"]

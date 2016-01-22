@@ -1,0 +1,4 @@
+[root]
+name = "earley_parser"
+version = "0.1.0"
+
