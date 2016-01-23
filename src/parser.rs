@@ -1,17 +1,12 @@
-use std::collections::HashMap;
 use grammar::{Grammar, Rule, Symbol};
 use std::fmt::{Write};
-
-struct Token<'a> {
-    symbol: u32,
-    text: &'a str
-}
+use tokenizer::Token;
 
 #[derive(Clone, PartialEq, Eq)]
 struct EarleyItem {
-    rule_id: u32,
-    position: u32,
-    start: u32,
+    rule_id: usize,
+    position: usize,
+    start: usize,
 }
 
 
@@ -23,10 +18,10 @@ impl EarleyItem {
     }
 
     fn get_rule<'a>(&self, gram: &'a Grammar) -> &'a Rule {
-        &gram.rules[self.rule_id as usize]
+        &gram.rules[self.rule_id]
     }
 
-    fn get_symbols<'a>(&self, gram: &'a Grammar) -> &'a Vec<u32> {
+    fn get_symbols<'a>(&self, gram: &'a Grammar) -> &'a Vec<usize> {
         &self.get_rule(gram).symbols
     }
 
@@ -35,7 +30,7 @@ impl EarleyItem {
     }
 
     fn fits(&self, gram: &Grammar, other_item: &EarleyItem) -> bool {
-        self.get_current_symbol(gram).id == gram.rules[other_item.rule_id as usize].name
+        self.get_current_symbol(gram).id == gram.rules[other_item.rule_id as usize].start
     }
 
     fn to_string(&self, gram: &Grammar) -> String {
@@ -43,48 +38,17 @@ impl EarleyItem {
         let rule = self.get_rule(gram);
         let rule_symbols = self.get_symbols(gram);
         write!(f, "({}) ", self.start).unwrap();
-        write!(f, "{} -> ", gram.symbols[rule.name as usize].name).unwrap();
+        write!(f, "{} -> ", gram.symbols[rule.start].name).unwrap();
         for (i, sym) in rule_symbols.iter().enumerate() {
             if i == self.position as usize {
                 write!(f, " \\*/ ").unwrap();
             }
-            write!(f, "{} ", gram.symbols[sym.clone() as usize].name).unwrap();
+            write!(f, "{} ", gram.symbols[sym.clone()].name).unwrap();
         }
         if self.is_complete(gram) {
             write!(f, " \\*/ ").unwrap();
         }
         return f;
-    }
-}
-
-fn tokenize<'a>(symbols: &Vec<Symbol>, text: &'a str) -> Vec<Token<'a>>{
-    let text_trimmed = text.trim();
-    let mut terminals: HashMap<String, &Symbol> = HashMap::new();
-    for symbol in symbols {
-        if symbol.is_terminal {
-            terminals.insert(symbol.name.to_string(), symbol);
-        }
-    }
-
-    let mut result = Vec::new();
-    for c in text_trimmed.split(" ") {
-        let opt = terminals.get(&c.to_string());
-        let sym = opt.unwrap_or_else(|| {panic!("Unrecognized token: {}", c);});
-        let new_token = Token {symbol: sym.id, text: c};
-        result.push(new_token);
-    }
-    result.push(Token {symbol: 4, text: "End of input"});
-    return result;
-}
-
-fn complete_partial_parse(item: &EarleyItem, gram: &Grammar, current_state_set: &mut Vec<EarleyItem>, old: &[Vec<EarleyItem>]) {
-    for past_item in &old[item.start as usize] {
-        if !past_item.is_complete(&gram) && past_item.fits(&gram, &item) {
-            let new_item = EarleyItem {rule_id: past_item.rule_id, position: past_item.position + 1, start: past_item.start};
-            if !current_state_set.contains(&new_item) {
-                current_state_set.push(new_item);
-            }
-        }
     }
 }
 
@@ -101,7 +65,15 @@ fn process_state_set(
         let item = current_state_set[i as usize].clone();
         let rule_len = gram.rules[item.rule_id as usize].symbols.len();
         if item.position as usize >= rule_len {
-            complete_partial_parse(&item, &gram, current_state_set, old); 
+            //complete parse
+            for past_item in &old[item.start as usize] {
+                if !past_item.is_complete(&gram) && past_item.fits(&gram, &item) {
+                    let new_item = EarleyItem {rule_id: past_item.rule_id, position: past_item.position + 1, start: past_item.start};
+                    if !current_state_set.contains(&new_item) {
+                        current_state_set.push(new_item);
+                    }
+                }
+            }
         }
         else {
             // incomplete parse
@@ -118,8 +90,8 @@ fn process_state_set(
             }
             else {
                 // predict next rule
-                for rule in gram.rules.iter().filter(|&r| r.name == next_symbol.id) {
-                    let new_item = EarleyItem {rule_id: rule.id, position: 0, start: index as u32};
+                for rule in gram.rules.iter().filter(|&r| r.start == next_symbol.id) {
+                    let new_item = EarleyItem {rule_id: rule.id, position: 0, start: index as usize};
                     if !current_state_set.contains(&new_item) {
                         current_state_set.push(new_item);
                     }
@@ -130,18 +102,21 @@ fn process_state_set(
     }
 }
 
-pub fn parse(gram: Grammar, text: &str) {
+pub fn parse(gram: Grammar, tokens: Vec<Token>) {
     let mut state_sets = Vec::new();
-    let tokens = tokenize(&gram.symbols, text);
-
-    let mut init_state_set = Vec::new();
-    for rule in gram.rules.iter().filter(|&r| r.name == gram.start) {
-        init_state_set.push(EarleyItem {rule_id: rule.name, position: 0, start: 0});
+    
+    // initial state set
+    {
+        let mut init_state_set = Vec::new();
+        for rule in gram.rules.iter().filter(|&r| r.start == gram.start) {
+            let mut s = String::new();
+            gram.print_rule(&mut s, &rule);
+            init_state_set.push(EarleyItem {rule_id: rule.id, position: 0, start: 0});
+        }
+        state_sets.push(init_state_set);
     }
-    state_sets.push(init_state_set);
 
     for (index, token) in tokens.iter().enumerate() {
-        println!("parsing token {}: {}", index, token.text);
         let mut next_state_set = Vec::new();
     
         {
@@ -154,7 +129,6 @@ pub fn parse(gram: Grammar, text: &str) {
                               old,
                               token,
                               index as u32);
-            println!("finished item set {}", index);
         }
         state_sets.push(next_state_set);
     }
