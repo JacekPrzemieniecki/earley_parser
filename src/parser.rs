@@ -102,6 +102,21 @@ fn process_state_set(
     }
 }
 
+fn reverse_and_sort(state_sets: &Vec<Vec<EarleyItem>>, gram: &Grammar) -> Vec<Vec<EarleyItem>> {
+    let mut result = Vec::new();
+    for _ in 0..state_sets.len() {
+        result.push(Vec::new());
+    }
+    for (i, state_set) in state_sets.iter().enumerate() {
+        for item in state_set.iter().filter(|i| i.is_complete(&gram)) {
+            let start = item.start;
+            let copy = EarleyItem {rule_id: item.rule_id, position: item.position, start: i};
+            result[start].push(copy);
+        }
+    }
+    return result;
+}
+
 pub fn parse(gram: Grammar, tokens: Vec<Token>) {
     let mut state_sets = Vec::new();
     
@@ -132,6 +147,8 @@ pub fn parse(gram: Grammar, tokens: Vec<Token>) {
         }
         state_sets.push(next_state_set);
     }
+
+    let reversed = reverse_and_sort(&state_sets, &gram);
 
     println!("{}", gram);
 

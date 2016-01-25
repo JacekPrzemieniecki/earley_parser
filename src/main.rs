@@ -20,12 +20,11 @@ static USAGE_MESSAGE : &'static str = "Usage:\n earley_parser <grammar file> <to
 fn main() {
     let arguments : Vec<_> = env::args().collect();
     let arg_count = arguments.len();
-    if arg_count != 4 {
+    if arg_count != 3 {
         panic!(USAGE_MESSAGE);
     }
 
-    let to_parse = read_all(&arguments[3]);
-    let tokens_text = read_all(&arguments[2]);
+    let to_parse = read_all(&arguments[2]);
     let grammar_str = read_all(&arguments[1]); 
     let gram = grammar::build_grammar(&grammar_str);
     let tokens = tokenize(&gram, &to_parse);
